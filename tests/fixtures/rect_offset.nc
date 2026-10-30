@@ -1,0 +1,13 @@
+%
+G21
+G90
+(rectangulo 100x50 con origen desplazado a X500 Y200)
+G0 X500 Y200 Z5
+G1 Z-1 F100
+G1 X600 F1000
+G1 Y250
+G1 X500
+G1 Y200
+G0 Z5
+M30
+%

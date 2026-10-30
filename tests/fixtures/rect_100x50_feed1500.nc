@@ -1,0 +1,13 @@
+%
+G21
+G90
+(rectangulo 100x50, 1 pasada, F1500)
+G0 X0 Y0 Z5
+G1 Z-1 F100
+G1 X100 F1500
+G1 Y50
+G1 X0
+G1 Y0
+G0 Z5
+M30
+%

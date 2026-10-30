@@ -1,0 +1,14 @@
+%
+G21
+G90
+(circulo D40 con G2 I/J + arco de 90 grados con G3 R)
+G0 X20 Y0 Z5
+G1 Z-1 F100
+G2 X20 Y0 I-20 J0 F1000
+G0 Z5
+G0 X50 Y0
+G1 Z-1 F100
+G3 X50 Y10 R10 F1000
+G0 Z5
+M30
+%

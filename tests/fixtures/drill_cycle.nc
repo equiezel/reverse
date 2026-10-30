@@ -1,0 +1,12 @@
+%
+G21
+G90
+(3 agujeros con ciclo G81)
+G0 X10 Y10 Z5
+G81 Z-5 R1 F100
+X30 Y10
+X50 Y10
+G80
+G0 Z5
+M30
+%

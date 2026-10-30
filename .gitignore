@@ -1,0 +1,25 @@
+# Dependencias
+node_modules/
+
+# Salidas generadas (IR, SVG, streams extraidos, reportes)
+out/
+*.svg
+
+# Muestras reales del cliente: nunca se versionan.
+# Solo se versiona samples/MANIFEST.md con hashes y procedencia.
+/samples/*
+!/samples/MANIFEST.md
+
+# Copias originales que quedaron en la raiz del proyecto
+/*.cnc
+/*.art
+/*.eps
+
+# Sistema
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Python
+__pycache__/
+*.pyc

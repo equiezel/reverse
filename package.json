@@ -1,0 +1,24 @@
+{
+  "name": "bellari-cnc-reverse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Investigacion y prototipo de importador de trayectorias CNC (G-code / ArtCAM) para Bellari",
+  "scripts": {
+    "inspect": "tsx tools/cli.ts inspect",
+    "dump": "tsx tools/cli.ts dump",
+    "diff": "tsx tools/cli.ts diff",
+    "parse": "tsx tools/cli.ts parse",
+    "render": "tsx tools/cli.ts render",
+    "validate": "tsx tools/cli.ts validate",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}
