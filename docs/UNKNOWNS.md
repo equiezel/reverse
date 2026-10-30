@@ -2,11 +2,11 @@
 
 | Pregunta / campo | Estado | Evidencia que lo resolveria |
 |---|---|---|
-| Software/version que genero cada `.cnc` | Desconocido | Nombre/version del CAM y exportacion original |
-| Marca/modelo de router, controlador y postprocesador | Desconocido | Identificacion de maquina/controlador y archivo de post |
+| Software/version que genero cada `.cnc` | Usuario recuerda ArtCAM 9; no verificado por archivo ni por exportacion | Nombre/version del CAM y confirmacion para cada archivo |
+| Marca/modelo de router, controlador y postprocesador | Mach2 es posible segun recuerdo; maquina y post desconocidos | Identificacion de maquina/controlador y archivo de post |
 | Unidades efectivas de los dos `.cnc` | Asumidas mm; no declaradas en archivo | Reexportar con unidades declaradas y comparar una dimension conocida |
 | Work offsets y origen de pieza | No documentados | Archivo con origen conocido o tabla de offsets del job |
-| EPS y G-code son el mismo diseño | No confirmado; dimensiones difieren | DXF/SVG de control del mismo job y origen/escala declarados |
+| EPS y G-code son el mismo diseño | No confirmado; dimensiones difieren | DXF/SVG de control del mismo job y origen/escala declarados; usuario puede aportarlo en `samples/` |
 | Objetivo de producto | No confirmado: cotizar tiempo, reconstruir pieza o ambos | Prioridad comercial del usuario |
 | NDA/permiso de conservar muestras | No confirmado directamente | Confirmacion del usuario y politica de retencion |
 | Geometria de toolpath ArtCAM | No decodificada | Dos `.art` diferenciales cambiando una sola variable, o exportacion oficial G-code |

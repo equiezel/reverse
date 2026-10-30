@@ -11,10 +11,10 @@ Triage reproducible con `npm run inspect -- <archivo>` y el analizador Python
 | `art.art` | MS-CFB/OLE2, proyecto ArtCAM | ArtCAM 9.021 | Firma `D0 CF 11 E0 A1 B1 1A E1`; streams bajo `ArtCAM/`; VersionInfo; 36 streams | Alta |
 | `1.eps` | EPS/PostScript | ArtCAM | `%!PS-Adobe-3.0 EPSF-3.0`, `%%Creator: ArtCAM`, `%%Title: Contour data from ArtCAM` | Alta |
 
-El detector de G-code no asigna productor a los `.cnc`; por lo tanto, la etiqueta
-Mach2/3 no esta confirmada. La firma de G-code es textual, no una firma binaria.
-El prefijo de `1 (1).cnc` se encuentra en el offset 0 del archivo; su fin de
-linea es CRLF.
+El detector de G-code no asigna productor a los `.cnc`. El usuario recuerda
+ArtCAM 9 como origen probable y cree que podria ser Mach2, pero no hay evidencia
+interna para confirmarlo. La firma de G-code es textual, no binaria. El prefijo
+de `1 (1).cnc` se encuentra en el offset 0 del archivo; su fin de linea es CRLF.
 
 ### CFB / ArtCAM
 

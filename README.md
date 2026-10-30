@@ -40,7 +40,9 @@ npm run typecheck
 
 Las rutas de ejemplo usan `samples/`, que esta vacia en clones limpios. Copiar
 los originales localmente solo si se tiene permiso; nunca hacer commit de esos
-archivos.
+archivos. Para un control geometrico, agregar el DXF/SVG correspondiente al
+mismo job bajo `samples/` y documentar unidades, origen y compensacion; Git
+ignora los originales por defecto.
 
 ```powershell
 npm run inspect -- samples\trayectorias.cnc

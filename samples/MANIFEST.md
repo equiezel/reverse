@@ -15,6 +15,8 @@ corpus. Las rutas y nombres de cliente se redactan en la documentación.
 
 - Los cuatro archivos llegaron juntos, en una sola carpeta, sin DXF/SVG de
   control ni documentación del proveedor.
+- El usuario recuerda ArtCAM 9 como origen de los `.cnc` y supone que el
+  controlador podria ser Mach2; esta informacion aun no fue verificada.
 - El nombre `1 (1).cnc` sugiere una descarga duplicada, pero no lo prueba. El
   hash es distinto; los dos archivos contienen las mismas metricas de corte y
   operaciones en distinto orden (ver `docs/03-validation.md`).
