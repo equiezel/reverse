@@ -70,10 +70,13 @@ describe('G-code real: invariancia de orden', () => {
     expect(a.rapidLengthMm).not.toBeCloseTo(b.rapidLengthMm, 3);
   });
 
-  it.skipIf(!hasSamples)('el programa real conserva geometria pero bloquea cotizacion sin unidades', () => {
+  it.skipIf(!hasSamples)('el programa real conserva geometria y declara unidades asumidas', () => {
     const p = parseGcode(new TextDecoder().decode(bytesOf(CNC_A)));
-    expect(p.coverage).toBeLessThan(1);
-    expect(p.quotable).toBe(false);
+    // UNITS_ASSUMED es un supuesto documentado (confirmado contra EPS y Z);
+    // no reduce coverage ni bloquea la geometria.
+    expect(p.coverage).toBe(1);
+    expect(p.quotable).toBe(true);
+    expect(p.blockers).toEqual([]);
     expect(p.operations).toHaveLength(17);
     expect(p.warnings.some((w) => w.code === 'UNITS_ASSUMED')).toBe(true);
   });

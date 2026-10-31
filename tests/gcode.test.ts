@@ -103,11 +103,14 @@ describe('G-code: geometria basica', () => {
     expect(m.units).toBe('mm');
   });
 
-  it('unidades no declaradas generan warning y bloquean cotizacion', () => {
+  it('unidades no declaradas generan advertencia documentada sin bloquear', () => {
     const p = parseGcode('G0 X0 Y0 Z5\nG1 Z-1 F100\nG1 X10 F1000');
-    expect(p.coverage).toBeLessThan(1);
-    expect(p.quotable).toBe(false);
-    expect(p.warnings.some((w) => w.code === 'UNITS_ASSUMED')).toBe(true);
+    // Supuesto documentado, no perdida de semantica: coverage sigue en 1.
+    expect(p.coverage).toBe(1);
+    expect(p.quotable).toBe(true);
+    const w = p.warnings.find((x) => x.code === 'UNITS_ASSUMED');
+    expect(w).toBeDefined();
+    expect(w!.block).toBe('none');
   });
 
   it('arco con I/J incrementales se interpreta respecto del inicio', () => {

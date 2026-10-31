@@ -11,6 +11,8 @@
     "parse": "tsx tools/cli.ts parse",
     "render": "tsx tools/cli.ts render",
     "validate": "tsx tools/cli.ts validate",
+    "quote": "tsx tools/cli.ts quote",
+    "analyze": "tsx tools/cli.ts analyze",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

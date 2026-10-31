@@ -22,6 +22,16 @@ import { parseGcode } from '../src/formats/gcode/parse';
 import { toQuoteMetrics } from '../src/formats/gcode/metrics';
 import { renderSvg } from '../src/formats/gcode/render';
 import { parseDxf } from '../src/formats/dxf';
+import { parseEps } from '../src/formats/eps';
+import { analyzeTrajectory } from '../src/analysis/contours';
+import {
+  toQuoteInput,
+  toEpsQuoteInput,
+  enrichWithArtcam,
+  toPartGeometryLike,
+  formatQuoteSummary,
+  type QuoteInput,
+} from '../src/integration/quote';
 import type { CncProgram } from '../src/ir/types';
 
 interface Args {
@@ -143,6 +153,22 @@ function detectAndReport(path: string, bytes: Uint8Array, text: string): number 
     for (const s of probe.streams) console.log(`  - ${s.path} (${s.size} B)`);
     console.log(`geometria   : ${probe.toolpathGeometry}`);
     console.log(`cotizable   : no (coverage 0, toolpaths sin decodificar)`);
+  }
+
+  if (d.kind === 'postscript') {
+    const doc = parseEps(text);
+    console.log(`EPS productor: ${doc.producer ?? '?'}   titulo: ${doc.title ?? '?'}`);
+    console.log(`paths        : ${doc.paths.length} (cerrados ${doc.loopCount}, abiertos ${doc.openCount}, puntos ${doc.pointCount})`);
+    console.log(`longitud     : ${doc.lengthMm.toFixed(3)} mm   perimetro loops ${doc.loopPerimeterMm.toFixed(3)} mm`);
+    if (doc.geometryBboxMm) {
+      const [x0, y0, x1, y1] = doc.geometryBboxMm;
+      console.log(`bbox geom    : ${(x1 - x0).toFixed(3)} x ${(y1 - y0).toFixed(3)} mm  [${x0.toFixed(2)}, ${y0.toFixed(2)}]`);
+    }
+    if (doc.area) {
+      console.log(`area         : neta ${doc.area.netAreaMm2.toFixed(2)} mm2  externa ${doc.area.outerAreaMm2.toFixed(2)}  agujeros ${doc.area.holeAreaMm2.toFixed(2)}`);
+    }
+    console.log(`escala       : 1 unidad = 1 mm si declara 2.834646 scale (mm -> puntos PS)`);
+    if (doc.unsupported.length) console.log(`no soport.   : ${doc.unsupported.slice(0, 12).join(', ')}`);
   }
 
   const strings = asciiStrings(bytes, 6);
@@ -308,10 +334,147 @@ function cmdRender(files: string[], flags: Args['flags']): number {
   return 0;
 }
 
+function machineFromFlags(flags: Args['flags']): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (flags.rapid !== undefined) out.rapidRateMmMin = Number(flags.rapid);
+  if (flags.efficiency !== undefined) out.efficiency = Number(flags.efficiency);
+  if (flags.toolchange !== undefined) out.toolChangeSeconds = Number(flags.toolchange);
+  if (flags.spindle !== undefined) out.spindleStartSeconds = Number(flags.spindle);
+  return out;
+}
+
+function loadQuote(file: string, flags: Args['flags']): QuoteInput {
+  const { bytes, text } = read(file);
+  const d = detectFormat(bytes);
+  const machine = { machine: machineFromFlags(flags) };
+  if (d.kind === 'gcode') {
+    let program = parseGcode(text, { filename: basename(file) });
+    if (typeof flags.art === 'string') {
+      const art = read(flags.art);
+      program = enrichWithArtcam(program, probeArtcam(art.bytes, basename(flags.art)));
+    }
+    return toQuoteInput(program, machine);
+  }
+  if (d.kind === 'postscript') {
+    return toEpsQuoteInput(parseEps(text), basename(file), machine);
+  }
+  throw new Error(`quote soporta G-code y EPS (detectado: ${d.kind}). Para .art usar "inspect".`);
+}
+
+function printQuote(input: QuoteInput): void {
+  const g = input.geometry;
+  const m = input.machining;
+  const t = input.time;
+  const mm = (v: number) => v.toFixed(2);
+  console.log(formatQuoteSummary(input));
+  console.log('');
+  console.log(`tipo        : ${input.kind}`);
+  console.log(`unidades    : ${input.units} (normalizadas)`);
+  console.log(`coverage    : ${(input.coverage * 100).toFixed(2)}%`);
+  console.log('');
+  console.log('GEOMETRIA');
+  console.log(`  perimetro contornos : ${mm(g.contourLengthMm)} mm`);
+  console.log(`  longitud abierta    : ${mm(g.openLengthMm)} mm`);
+  console.log(`  loops / agujeros    : ${g.loopCount} / ${g.holeCount}`);
+  console.log(`  perforaciones       : ${g.pierceCount}`);
+  console.log(`  area neta           : ${mm(g.netAreaMm2)} mm2  (externa ${mm(g.outerAreaMm2)}, agujeros ${mm(g.holeAreaMm2)})`);
+  console.log(`  area de pieza       : ${g.partAreaMm2 === null ? 'n/d' : `${mm(g.partAreaMm2)} mm2`}  (base: ${g.areaBasis})`);
+  if (g.bbox) console.log(`  bbox                : ${mm(g.bbox.width)} x ${mm(g.bbox.height)} mm  [${mm(g.bbox.minX)}, ${mm(g.bbox.minY)}]`);
+  if (g.bboxAreaMm2 !== null) console.log(`  area bbox           : ${mm(g.bboxAreaMm2)} mm2  (aprovechamiento ${((g.netAreaMm2 / g.bboxAreaMm2) * 100).toFixed(1)}%)`);
+  console.log('');
+  console.log('MECANIZADO');
+  console.log(`  longitud de corte   : ${mm(m.cutLengthMm)} mm (engaged ${mm(m.engagedLengthMm)})`);
+  console.log(`  rapido              : ${mm(m.rapidLengthMm)} mm`);
+  console.log(`  pasadas             : ${m.passes}`);
+  console.log(`  profundidad maxima  : ${m.maxDepthMm === null ? 'n/d' : `${mm(m.maxDepthMm)} mm`}`);
+  console.log(`  espesor             : ${m.thicknessMm === null ? 'n/d' : `${mm(m.thicknessMm)} mm`}`);
+  console.log(`  volumen pieza       : ${m.partVolumeMm3 === null ? 'n/d' : `${mm(m.partVolumeMm3 / 1000)} cm3`}`);
+  console.log(`  herramienta         : ${m.tool ? `${m.tool.id} D=${m.tool.diameterMm ?? '?'}mm ${m.tool.kind}` : 'n/d'}`);
+  console.log('');
+  console.log('TIEMPO');
+  console.log(`  corte               : ${(t.cuttingSeconds / 60).toFixed(2)} min`);
+  console.log(`  entradas            : ${(t.entrySeconds / 60).toFixed(2)} min`);
+  console.log(`  rapido              : ${(t.rapidSeconds / 60).toFixed(2)} min`);
+  console.log(`  cambios herramienta : ${(t.toolChangeSeconds / 60).toFixed(2)} min`);
+  console.log(`  arranque husillo    : ${(t.spindleSeconds / 60).toFixed(2)} min`);
+  console.log(`  total               : ${(t.totalSeconds / 60).toFixed(2)} min  (confiabilidad: ${t.reliability})`);
+  if (input.assumptions.length) {
+    console.log('');
+    console.log('SUPUESTOS');
+    for (const a of input.assumptions) console.log(`  - ${a}`);
+  }
+  const relevant = input.warnings.filter((w) => w.block !== 'none');
+  if (relevant.length) {
+    console.log('');
+    console.log(`ADVERTENCIAS RELEVANTES (${relevant.length})`);
+    for (const w of relevant.slice(0, 20)) console.log(`  [${w.line ?? '-'}] ${w.code} (${w.block}): ${w.message}`);
+  }
+  console.log('');
+  if (input.quotable) {
+    console.log('COTIZACION: geometria confiable.');
+  } else {
+    console.log(`COTIZACION BLOQUEADA: ${input.blockers.join(', ') || 'coverage incompleto'}`);
+  }
+  if (!input.timeReliable) console.log('TIEMPO NO CONFIABLE: no usar el total como base de precio sin revisar.');
+}
+
+function cmdQuote(files: string[], flags: Args['flags']): number {
+  const file = files[0];
+  if (!file) throw new Error('quote requiere un archivo');
+  const input = loadQuote(file, flags);
+  if (flags.json) {
+    const json = JSON.stringify(input, null, 2);
+    if (typeof flags.out === 'string') {
+      mkdirSync(dirname(flags.out), { recursive: true });
+      writeFileSync(flags.out, json, 'utf-8');
+      console.log(`[json] ${flags.out}`);
+    } else {
+      console.log(json);
+    }
+    return 0;
+  }
+  printQuote(input);
+  return 0;
+}
+
+function cmdAnalyze(files: string[], flags: Args['flags']): number {
+  const file = files[0];
+  if (!file) throw new Error('analyze requiere un archivo');
+  const input = loadQuote(file, flags);
+  const a = input.analysis;
+  const mm = (v: number) => v.toFixed(2);
+  console.log(`analisis    : ${input.source.filename}  (${input.kind})`);
+  console.log(`cadenas     : ${a.chains.length}  cerradas ${a.closedLoops.length}  abiertas ${a.openChains.length}`);
+  console.log(`perimetro   : ${mm(a.contourPerimeterMm)} mm  abierto ${mm(a.openLengthMm)} mm`);
+  console.log(`area        : neta ${mm(a.netAreaMm2)} mm2  externa ${mm(a.outerAreaMm2)}  agujeros ${mm(a.holeAreaMm2)}`);
+  console.log(`anidamiento : ${a.loopDepths.join(',') || '-'}  (0=solido, 1=agujero)`);
+  console.log(`entradas    : ${a.entryCount}  ${Object.entries(a.entryTypes).filter(([, v]) => v > 0).map(([k, v]) => `${k}:${v}`).join(' ') || '-'}`);
+  console.log(`niveles Z   : ${a.passLevelsMm.join(', ') || '-'}`);
+  console.log('');
+  console.log('CADENAS');
+  for (const c of a.chains.slice(0, Number(flags.limit ?? 40))) {
+    console.log(
+      `  ${c.id.padEnd(9)} ${c.closed ? 'cerrada ' : 'abierta '} per=${c.perimeterMm.toFixed(2)}mm area=${c.areaMm2 === null ? '-' : c.areaMm2.toFixed(2)} z=${c.zBottom.toFixed(2)}..${c.zTop.toFixed(2)} tool=${c.toolId ?? '-'}`,
+    );
+  }
+  if (a.chains.length > Number(flags.limit ?? 40)) console.log(`  ... ${a.chains.length - Number(flags.limit ?? 40)} mas`);
+  if (flags.json) {
+    const json = JSON.stringify(a, null, 2);
+    if (typeof flags.out === 'string') {
+      mkdirSync(dirname(flags.out), { recursive: true });
+      writeFileSync(flags.out, json, 'utf-8');
+      console.log(`[json] ${flags.out}`);
+    } else {
+      console.log(json);
+    }
+  }
+  return 0;
+}
+
 function cmdValidate(files: string[], flags: Args['flags']): number {
   const file = files[0];
   if (!file) throw new Error('validate requiere un archivo');
-  const { metrics } = loadProgram(file);
+  const { program, metrics } = loadProgram(file);
   const tol = Number(flags.tol ?? 1.0);
   let ok = true;
 
@@ -343,6 +506,36 @@ function cmdValidate(files: string[], flags: Args['flags']): number {
     if (dLen > Math.max(tol, dxf.lengthMm * 0.01)) ok = false;
   }
 
+  if (typeof flags.eps === 'string') {
+    const doc = parseEps(readFileSync(flags.eps, 'utf-8'));
+    console.log('');
+    console.log(`EPS control : ${flags.eps}`);
+    console.log(`  loops     : ${doc.loopCount} (abiertos ${doc.openCount})`);
+    console.log(`  perimetro : ${doc.loopPerimeterMm.toFixed(3)} mm (una pasada)`);
+    if (doc.geometryBboxMm) {
+      const [x0, y0, x1, y1] = doc.geometryBboxMm;
+      console.log(`  bbox      : ${(x1 - x0).toFixed(3)} x ${(y1 - y0).toFixed(3)} mm`);
+      if (metrics.bbox) {
+        // La trayectoria G-code es el centro de herramienta: se espera una
+        // diferencia de +-diametro de fresa entre ambos bbox.
+        const dW = metrics.bbox.width - (x1 - x0);
+        const dH = metrics.bbox.height - (y1 - y0);
+        console.log(`  delta bbox (G-code - EPS): ${dW.toFixed(3)} x ${dH.toFixed(3)} mm`);
+        const limit = Number(flags.tool ?? 3.5);
+        if (Math.abs(dW) > limit || Math.abs(dH) > limit) ok = false;
+      }
+    }
+    if (doc.area) {
+      console.log(`  area neta : ${doc.area.netAreaMm2.toFixed(2)} mm2`);
+    }
+    const g = analyzeTrajectory(program);
+    const onePassG = g.contourPerimeterMm + g.openLengthMm;
+    console.log(`  G-code una pasada: ${onePassG.toFixed(3)} mm (${g.closedLoops.length} loops + ${g.openChains.length} abiertas)`);
+    const dLen = Math.abs(onePassG - doc.loopPerimeterMm);
+    console.log(`  dif. longitud una pasada: ${dLen.toFixed(3)} mm  (tolerancia ${(Number(flags.lentol ?? 0.02) * 100).toFixed(1)}%)`);
+    if (dLen > doc.loopPerimeterMm * Number(flags.lentol ?? 0.02)) ok = false;
+  }
+
   if (!metrics.quotable) {
     console.log('');
     console.log('AVISO: coverage < 1 o hay operaciones desconocidas -> la cotizacion debe bloquearse.');
@@ -360,7 +553,9 @@ function usage(): void {
   diff     <a> <b>                   diferencias de texto o de bytes
   parse    <archivo> [--json] [--out salida.json]
   render   <archivo> [--out salida.svg] [--by operation|motion]
-  validate <archivo> [--dxf control.dxf] [--tol 1.0]`);
+  validate <archivo> [--dxf control.dxf] [--eps control.eps] [--tol 1.0] [--tool 3.5]
+  quote    <archivo> [--art metadatos.art] [--rapid 5000] [--efficiency 1] [--json] [--out salida.json]
+  analyze  <archivo> [--limit 40] [--json] [--out salida.json]`);
 }
 
 function main(): number {
@@ -378,6 +573,10 @@ function main(): number {
       return cmdRender(args.files, args.flags);
     case 'validate':
       return cmdValidate(args.files, args.flags);
+    case 'quote':
+      return cmdQuote(args.files, args.flags);
+    case 'analyze':
+      return cmdAnalyze(args.files, args.flags);
     default:
       usage();
       return args.command === 'help' ? 0 : 2;
