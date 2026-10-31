@@ -84,9 +84,11 @@ export interface QuoteMachining {
   cutLengthMm: number;
   engagedLengthMm: number;
   rapidLengthMm: number;
-  /** Niveles de profundidad distintos con corte lateral. */
+  /** niveles de profundidad distintos con corte lateral. */
   passes: number;
   maxDepthMm: number | null;
+  /** true si la profundidad maxima alcanza el espesor (corte pasante). */
+  throughCut: boolean | null;
   thicknessMm: number | null;
   /** Volumen de la pieza (area neta x espesor), si hay espesor. */
   partVolumeMm3: number | null;
@@ -106,6 +108,8 @@ export interface QuoteOperation {
   holeCount: number;
   /** Perimetro de los loops cerrados de la operacion, una pasada. */
   perimeterMm: number;
+  /** true si la profundidad alcanza el espesor (corte pasante); null si falta dato. */
+  throughCut: boolean | null;
   cutLengthMm: number;
   engagedLengthMm: number;
   rapidLengthMm: number;
@@ -142,7 +146,20 @@ export interface QuoteOptions {
 }
 
 function mergeMachine(profile?: Partial<MachineProfile>): MachineProfile {
-  return { ...DEFAULT_MACHINE, ...(profile ?? {}) };
+  const machine = { ...DEFAULT_MACHINE, ...(profile ?? {}) };
+  if (!Number.isFinite(machine.rapidRateMmMin) || machine.rapidRateMmMin <= 0) {
+    throw new RangeError('rapidRateMmMin debe ser un numero finito mayor que cero');
+  }
+  if (!Number.isFinite(machine.toolChangeSeconds) || machine.toolChangeSeconds < 0) {
+    throw new RangeError('toolChangeSeconds debe ser un numero finito no negativo');
+  }
+  if (!Number.isFinite(machine.spindleStartSeconds) || machine.spindleStartSeconds < 0) {
+    throw new RangeError('spindleStartSeconds debe ser un numero finito no negativo');
+  }
+  if (!Number.isFinite(machine.efficiency) || machine.efficiency < 0 || machine.efficiency > 1) {
+    throw new RangeError('efficiency debe estar entre cero y uno');
+  }
+  return machine;
 }
 
 /**
@@ -183,15 +200,26 @@ export function toQuoteInput(program: CncProgram, options: QuoteOptions = {}): Q
   });
   const analysis = analyzeTrajectory(program);
 
-  const cutSeconds = metrics.estimatedCutSeconds;
-  const engagedShare = metrics.cutLengthMm > 0 ? metrics.engagedLengthMm / metrics.cutLengthMm : 0;
-  const cuttingSeconds = cutSeconds * engagedShare;
-  const entrySeconds = Math.max(0, cutSeconds - cuttingSeconds);
+  let cuttingSeconds = 0;
+  let entrySeconds = 0;
+  let dwellSeconds = 0;
+  for (const move of program.moves) {
+    if (move.kind === 'dwell') {
+      dwellSeconds += move.seconds ?? 0;
+      continue;
+    }
+    if (move.kind === 'rapid' || move.seconds === null) continue;
+
+    const engagedShare =
+      move.lengthMm > 0 ? Math.max(0, Math.min(1, move.engagedLengthMm / move.lengthMm)) : 0;
+    cuttingSeconds += move.seconds * engagedShare;
+    entrySeconds += move.seconds * (1 - engagedShare);
+  }
+  const cutSeconds = cuttingSeconds + entrySeconds;
   const motionSeconds = (cutSeconds + metrics.estimatedRapidSeconds) * machine.efficiency;
 
   const toolChangeSeconds = metrics.toolChangeCount * machine.toolChangeSeconds;
   const spindleSeconds = program.moves.length > 0 ? machine.spindleStartSeconds : 0;
-  const dwellSeconds = 0;
 
   const reliability: TimeReliability = !metrics.timeComplete
     ? 'incomplete'
@@ -264,6 +292,8 @@ export function toQuoteInput(program: CncProgram, options: QuoteOptions = {}): Q
       loopCount: loops.length,
       holeCount: loops.filter((c) => (depthOf.get(c.id) ?? 0) % 2 === 1).length,
       perimeterMm: loops.reduce((s, c) => s + c.perimeterMm, 0),
+      throughCut:
+        thickness === null || op.depthMm === null ? null : op.depthMm >= thickness - 0.5,
       cutLengthMm: op.cutLengthMm,
       engagedLengthMm: op.engagedLengthMm,
       rapidLengthMm: op.rapidLengthMm,
@@ -309,6 +339,8 @@ export function toQuoteInput(program: CncProgram, options: QuoteOptions = {}): Q
       rapidLengthMm: metrics.rapidLengthMm,
       passes: metrics.passCount,
       maxDepthMm: analysis.depthMm,
+      throughCut:
+        thickness === null || analysis.depthMm === null ? null : analysis.depthMm >= thickness - 0.5,
       thicknessMm: thickness,
       partVolumeMm3: thickness !== null && partAreaMm2 !== null ? partAreaMm2 * thickness : null,
       tool: tool
@@ -375,6 +407,12 @@ export function toPartGeometryLike(input: QuoteInput): PartGeometryLike {
   } else if (loops.length === 0) {
     quality = 'unusable';
     reason = 'No se detectaron contornos cerrados';
+  } else if (input.kind === 'machining-program' && input.geometry.areaBasis !== 'part-contour') {
+    quality = 'approximate';
+    reason =
+      input.geometry.areaBasis === 'tool-center'
+        ? 'La trayectoria representa el centro de herramienta; no es el contorno nominal de la pieza.'
+        : 'No se pudo determinar si la trayectoria representa el contorno nominal de la pieza.';
   } else if (openChains.length > 0) {
     quality = 'approximate';
     reason = `${openChains.length} cadenas abiertas no forman contorno cerrado`;
@@ -513,6 +551,7 @@ export function toEpsQuoteInput(doc: EpsDocument, filename: string, options: Quo
       rapidLengthMm: 0,
       passes: 0,
       maxDepthMm: null,
+      throughCut: null,
       thicknessMm: null,
       partVolumeMm3: null,
       tool: null,

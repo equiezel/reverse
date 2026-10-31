@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 import { parseGcode } from '../src/formats/gcode/parse';
 import { parseEps } from '../src/formats/eps';
 import { analyzeTrajectory, summarizeLoops, pointInPolygon, polygonArea } from '../src/analysis/contours';
-import { toQuoteInput, toEpsQuoteInput, enrichWithArtcam } from '../src/integration/quote';
+import { toQuoteInput, toEpsQuoteInput, toPartGeometryLike, enrichWithArtcam } from '../src/integration/quote';
 import type { ArtcamProbe } from '../src/formats/artcam/probe';
 
 const RECT_GCODE = ['G21', 'G90', 'G0 X0 Y0 Z5', 'G1 Z-1 F100', 'G1 X100 F1000', 'G1 Y50', 'G1 X0', 'G1 Y0', 'G0 Z5', 'M30'].join('\n');
@@ -199,12 +199,46 @@ describe('Adaptador de presupuesto', () => {
     expect(q.time.reliability).toBe('estimated');
     expect(q.timeReliable).toBe(true);
     expect(q.time.totalSeconds).toBeGreaterThan(0);
+    expect(q.time.cuttingSeconds).toBeCloseTo(18.6, 6);
+    expect(q.time.entrySeconds).toBeCloseTo(3, 6);
     expect(q.operations).toHaveLength(1);
     expect(q.operations[0]!.loopCount).toBe(1);
     expect(q.operations[0]!.holeCount).toBe(0);
     expect(q.operations[0]!.perimeterMm).toBeCloseTo(300, 6);
     expect(q.operations[0]!.totalSeconds).toBeGreaterThan(0);
     expect(q.assumptions.length).toBeGreaterThan(0);
+    const geometry = toPartGeometryLike(q);
+    expect(geometry.quality).toBe('approximate');
+    expect(geometry.reason).toMatch(/contorno nominal/);
+  });
+
+  it('rechaza perfiles de maquina con parametros fuera de rango', () => {
+    const program = parseGcode(RECT_GCODE);
+    expect(() => toQuoteInput(program, { machine: { rapidRateMmMin: 0 } })).toThrow(RangeError);
+    expect(() => toQuoteInput(program, { machine: { toolChangeSeconds: -1 } })).toThrow(RangeError);
+    expect(() => toQuoteInput(program, { machine: { spindleStartSeconds: Number.NaN } })).toThrow(RangeError);
+    expect(() => toQuoteInput(program, { machine: { efficiency: 1.1 } })).toThrow(RangeError);
+  });
+
+  it('separa el dwell del movimiento y lo incluye en el tiempo total', () => {
+    const text = [
+      'G21',
+      'G90',
+      'G0 X0 Y0 Z5',
+      'G1 Z-1 F100',
+      'G4 P2',
+      'G1 X100 F1000',
+      'G0 Z5',
+      'M30',
+    ].join('\n');
+    const q = toQuoteInput(parseGcode(text));
+    expect(q.time.cuttingSeconds).toBeCloseTo(6.6, 6);
+    expect(q.time.entrySeconds).toBeCloseTo(3, 6);
+    expect(q.time.dwellSeconds).toBe(2);
+    expect(q.time.totalSeconds).toBeCloseTo(
+      q.time.motionSeconds + q.time.dwellSeconds + q.time.toolChangeSeconds + q.time.spindleSeconds,
+      9,
+    );
   });
 
   it('con metadatos de ArtCAM rellena herramienta, espesor y area de pieza', () => {
@@ -217,7 +251,17 @@ describe('Adaptador de presupuesto', () => {
     expect(q.geometry.partAreaMm2).toBeCloseTo(5000 - 1.585 * 300, 3);
     expect(q.machining.partVolumeMm3).toBeCloseTo((5000 - 1.585 * 300) * 12, 3);
     // el rectangulo corta 1 mm en un espesor de 12 mm: es mecanizado parcial
+    expect(q.machining.throughCut).toBe(false);
+    expect(q.operations[0]!.throughCut).toBe(false);
     expect(q.warnings.some((w) => w.code === 'DEPTH_BELOW_STOCK')).toBe(true);
+  });
+
+  it('marca corte pasante cuando la profundidad alcanza el espesor', () => {
+    const throughGcode = RECT_GCODE.replaceAll('Z-1', 'Z-12.5');
+    const program = enrichWithArtcam(parseGcode(throughGcode), fakeArtcam(3.17, 12));
+    const q = toQuoteInput(program);
+    expect(q.machining.throughCut).toBe(true);
+    expect(q.operations[0]!.throughCut).toBe(true);
   });
 
   it('un EPS solo aporta geometria: tiempo no confiable y sin mecanizado', () => {
@@ -230,6 +274,21 @@ describe('Adaptador de presupuesto', () => {
     expect(q.operations).toEqual([]);
     expect(q.geometry.contourLengthMm).toBeCloseTo(300, 2);
     expect(q.geometry.partAreaMm2).toBeCloseTo(5000, 1);
+    expect(toPartGeometryLike(q).quality).toBe('exact');
+  });
+});
+
+describe('Superficie publica', () => {
+  it('no usa APIs de Node: el lector debe correr en navegador', () => {
+    const files = readdirSync('src', { recursive: true, encoding: 'utf-8' })
+      .filter((f) => f.endsWith('.ts'))
+      .map((f) => `src/${f.replace(/\\/g, '/')}`);
+    expect(files.length).toBeGreaterThan(5);
+    for (const file of files) {
+      const text = readFileSync(file, 'utf-8');
+      expect(text, file).not.toMatch(/from ['"]node:/);
+      expect(text, file).not.toMatch(/\brequire\(/);
+    }
   });
 });
 

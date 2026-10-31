@@ -18,7 +18,7 @@ proyecto Bellari: no es un controlador de maquina ni un parser universal.
 - **Corpus real**: cuatro archivos identificados por hash en
   [samples/MANIFEST.md](./samples/MANIFEST.md); los originales se excluyen del
   repositorio.
-- **Pruebas**: 46 aserciones (`npm test`), incluidas las del corpus real cuando
+- **Pruebas**: 50 tests (`npm test`), incluidas las del corpus real cuando
   los samples estan presentes.
 
 El estado y la evidencia por tema estan en [docs/00-corpus.md](./docs/00-corpus.md),

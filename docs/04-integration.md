@@ -95,6 +95,8 @@ totalSeconds  = motionSeconds + dwellSeconds + toolChangeSeconds + spindleSecond
   real de G0.
 - `efficiency` (0..1) corrige aceleraciones y look-ahead. Por defecto 1.
 - `spindleStartSeconds` y `toolChangeSeconds` son parametros de maquina.
+- Los parametros de maquina se validan al crear el presupuesto; tasas no
+  positivas, segundos negativos y valores no finitos lanzan `RangeError`.
 
 Si falta `F`, o hay G95 sin RPM, `timeReliable = false` y el total no debe
 usarse como precio sin revisar. La geometria sigue siendo valida.
@@ -117,27 +119,36 @@ distinguir "no puedo cotizar" de "puedo cotizar pero el tiempo es estimado".
 
 `toPartGeometryLike(quote)` devuelve loops y cadenas abiertas con `quality`:
 
-- `exact`: geometria confiable, hay loops cerrados y no hay cadenas abiertas.
+- `exact`: geometria de diseño (por ejemplo EPS), hay loops cerrados, no hay
+  cadenas abiertas y la fuente declara el contorno de pieza.
 - `approximate`: hay cadenas abiertas (grabados, lead-outs).
+- Un programa CNC basado en centro de herramienta siempre es `approximate`,
+  incluso si sus paths cierran: el diametro y los offsets determinan el
+  contorno nominal.
 - `unusable`: `quotable = false` o no hay loops.
 
-No se debe usar como `PartGeometry` sin mostrar `quality`: el G-code representa
-el centro de herramienta, con entradas, tabs y multipasada; el area de pieza se
-estima con `partAreaMm2`, no con el area de los loops.
+Esto es un tipo compatible para diagnostico, no el `PartGeometry` de CutQuote.
+No se debe insertar en el motor actual como geometria exacta: el G-code puede
+representar centro de herramienta, entradas, tabs y multipasada; el area
+corregida `partAreaMm2` es estimada y no reemplaza un offset geometrico exacto.
 
 ## Integracion concreta en Bellari
 
-1. Copiar `src/ir`, `src/formats`, `src/analysis`, `src/integration` y
-   `src/index.ts` al proyecto (sin dependencias externas).
-2. Persistir el `QuoteInput` completo, no el archivo original, con
-   `schemaVersion: '1'` para poder migrar.
-3. Guardar junto al presupuesto: hash del archivo, `source.filename`,
-   `assumptions`, `blockers` y `machine`.
-4. Mostrar el desglose de tiempo y los supuestos al cotizador; el precio unitario
-   y el catalogo quedan en Bellari.
-5. Si el usuario adjunta G-code + `.art` + EPS, usar los tres: G-code para
-   tiempo, EPS para verificar contorno/area, `.art` para herramienta/espesor.
-6. No reutilizar el resultado si cambia el archivo: recalcular y comparar hash.
+1. Abrir el repositorio de CutQuote y este prototipo como carpetas separadas en
+   un workspace multi-root de VS Code; no copiar archivos todavia.
+2. Revisar el flujo de upload, el parser 2D actual, `PartGeometry`, cotizador,
+   persistencia y `scripts/verify-engine.ts` en CutQuote.
+3. Acordar un contrato pequeño entre proyectos y portar solo los modulos
+   necesarios a una feature CNC, manteniendolos sin APIs de Node ni precios.
+4. Persistir una version compacta de `QuoteInput`, no el archivo original ni
+   todo `analysis` por defecto. Guardar hash, `schemaVersion`, supuestos,
+   bloqueos y perfil de maquina.
+5. Mostrar las trayectorias y la calidad en un modo CNC separado; no enviar
+   `PartGeometryLike` approximate al cotizador 2D existente.
+6. Usar G-code para mecanizado/tiempos, EPS para validar contorno si pertenece
+   al mismo trabajo y `.art` solo para metadata conocida.
+7. Agregar aserciones analiticas de motor y pruebas de importacion/UI en
+   CutQuote; recalcular cuando cambie el hash del archivo.
 
 ## Riesgos y esfuerzo
 
@@ -169,4 +180,8 @@ estima con `partAreaMm2`, no con el area de los loops.
 5. `toPartGeometryLike` es opcional y declara su calidad.
 6. La geometria es cotizable; el tiempo es estimado y se marca como tal.
 7. Falta calibrar tiempos contra la maquina real.
-8. Siguiente paso: definir tarifas en Bellari y consumir `QuoteInput`.
+8. No se conecto todavia el repositorio CutQuote; esta capa solo entrega datos
+   neutrales para presupuesto.
+9. El siguiente paso es abrir ambos repositorios en un workspace multi-root y
+   mapear los puntos concretos del flujo en CutQuote.
+10. Solo despues de ese mapeo se debe implementar y verificar el primer import CNC en la app.
