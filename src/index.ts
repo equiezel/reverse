@@ -97,6 +97,7 @@ export type {
   QuoteGeometry,
   QuoteInput,
   QuoteMachining,
+  QuoteOperation,
   QuoteOptions,
   TimeBreakdown,
   TimeReliability,

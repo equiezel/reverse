@@ -68,6 +68,7 @@ Campos principales:
 | `machining.passes` | niveles de profundidad con corte lateral |
 | `machining.partVolumeMm3` | `partArea * thickness` si se conoce el espesor |
 | `machining.tool` | primer toolpath con diametro y tipo |
+| `operations[]` | desglose por operacion: loops, agujeros, perimetro, longitudes, perforaciones y tiempo |
 | `time.*` | corte, entradas, rapido, dwell, cambios, husillo, total |
 | `time.reliability` | `estimated` o `incomplete` |
 | `quotable` | geometria confiable (coverage 1 y sin blockers) |

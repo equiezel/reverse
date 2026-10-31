@@ -210,6 +210,7 @@ export interface QuoteMetrics {
     passes: number;
     depthMm: number | null;
     rapidLengthMm: number;
+    rapidSeconds: number;
     cutSeconds: number;
     toolId: string | null;
   }>;

@@ -390,6 +390,15 @@ function printQuote(input: QuoteInput): void {
   console.log(`  espesor             : ${m.thicknessMm === null ? 'n/d' : `${mm(m.thicknessMm)} mm`}`);
   console.log(`  volumen pieza       : ${m.partVolumeMm3 === null ? 'n/d' : `${mm(m.partVolumeMm3 / 1000)} cm3`}`);
   console.log(`  herramienta         : ${m.tool ? `${m.tool.id} D=${m.tool.diameterMm ?? '?'}mm ${m.tool.kind}` : 'n/d'}`);
+  if (input.operations.length) {
+    console.log('');
+    console.log('OPERACIONES');
+    for (const op of input.operations) {
+      console.log(
+        `  ${op.id.padEnd(5)} ${op.kind.padEnd(8)} prof=${(op.depthMm ?? 0).toFixed(2)}mm pas=${op.passes} loops=${op.loopCount}/${op.holeCount}h per=${mm(op.perimeterMm)}mm corte=${mm(op.cutLengthMm)}mm pierces=${op.pierceCount} t=${(op.totalSeconds / 60).toFixed(2)}min`,
+      );
+    }
+  }
   console.log('');
   console.log('TIEMPO');
   console.log(`  corte               : ${(t.cuttingSeconds / 60).toFixed(2)} min`);
@@ -403,7 +412,9 @@ function printQuote(input: QuoteInput): void {
     console.log('SUPUESTOS');
     for (const a of input.assumptions) console.log(`  - ${a}`);
   }
-  const relevant = input.warnings.filter((w) => w.block !== 'none');
+  const relevant = input.warnings.filter(
+    (w) => w.block !== 'none' || w.code === 'DEPTH_EXCEEDS_STOCK' || w.code === 'DEPTH_BELOW_STOCK',
+  );
   if (relevant.length) {
     console.log('');
     console.log(`ADVERTENCIAS RELEVANTES (${relevant.length})`);

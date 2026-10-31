@@ -10,7 +10,7 @@
  * `quotable` y `quality`.
  */
 
-import type { CncProgram, CncTool, CncWarning, Vec2 } from '../ir/types';
+import type { CncProgram, CncTool, CncWarning, OperationKind, Vec2 } from '../ir/types';
 import type { ArtcamProbe } from '../formats/artcam/probe';
 import { analyzeTrajectory, summarizeLoops, type CutChain, type TrajectoryAnalysis } from '../analysis/contours';
 import { toQuoteMetrics } from '../formats/gcode/metrics';
@@ -94,6 +94,27 @@ export interface QuoteMachining {
   toolCount: number;
 }
 
+export interface QuoteOperation {
+  id: string;
+  kind: OperationKind;
+  toolId: string | null;
+  /** Profundidad maxima de la operacion, en mm bajo la cara superior. */
+  depthMm: number | null;
+  passes: number;
+  /** Loops cerrados de la operacion (una pasada, ya deduplicados). */
+  loopCount: number;
+  holeCount: number;
+  /** Perimetro de los loops cerrados de la operacion, una pasada. */
+  perimeterMm: number;
+  cutLengthMm: number;
+  engagedLengthMm: number;
+  rapidLengthMm: number;
+  pierceCount: number;
+  cutSeconds: number;
+  rapidSeconds: number;
+  totalSeconds: number;
+}
+
 export interface QuoteInput {
   schemaVersion: '1';
   /** `machining-program` = trayectoria real; `design-geometry` = contorno 2D sin tiempo. */
@@ -102,6 +123,8 @@ export interface QuoteInput {
   units: 'mm';
   geometry: QuoteGeometry;
   machining: QuoteMachining;
+  /** Desglose por operacion; vacio para EPS. */
+  operations: QuoteOperation[];
   time: TimeBreakdown;
   machine: MachineProfile;
   coverage: number;
@@ -228,6 +251,52 @@ export function toQuoteInput(program: CncProgram, options: QuoteOptions = {}): Q
     bboxAreaMm2: analysis.bboxAreaMm2,
   };
 
+  const depthOf = new Map<string, number>();
+  analysis.closedLoops.forEach((chain, i) => depthOf.set(chain.id, analysis.loopDepths[i] ?? 0));
+  const operations: QuoteOperation[] = metrics.perOperation.map((op) => {
+    const loops = analysis.closedLoops.filter((c) => c.operationId === op.id);
+    return {
+      id: op.id,
+      kind: op.kind,
+      toolId: op.toolId,
+      depthMm: op.depthMm,
+      passes: op.passes,
+      loopCount: loops.length,
+      holeCount: loops.filter((c) => (depthOf.get(c.id) ?? 0) % 2 === 1).length,
+      perimeterMm: loops.reduce((s, c) => s + c.perimeterMm, 0),
+      cutLengthMm: op.cutLengthMm,
+      engagedLengthMm: op.engagedLengthMm,
+      rapidLengthMm: op.rapidLengthMm,
+      pierceCount: op.pierceCount,
+      cutSeconds: op.cutSeconds,
+      rapidSeconds: op.rapidSeconds,
+      totalSeconds: op.cutSeconds + op.rapidSeconds,
+    };
+  });
+
+  // Coherencia profundidad/espesor: dato util para saber si el programa corta
+  // pasado (separacion) o solo desbasta bolsillos.
+  const warnings: CncWarning[] = [...program.warnings];
+  if (thickness !== null && analysis.depthMm !== null) {
+    if (analysis.depthMm > thickness + 0.5) {
+      warnings.push({
+        code: 'DEPTH_EXCEEDS_STOCK',
+        message: `Profundidad maxima ${analysis.depthMm} mm > espesor ${thickness} mm: el programa corta pasado (separacion).`,
+        line: null,
+        severity: 'info',
+        block: 'none',
+      });
+    } else if (analysis.depthMm < thickness - 0.5) {
+      warnings.push({
+        code: 'DEPTH_BELOW_STOCK',
+        message: `Profundidad maxima ${analysis.depthMm} mm < espesor ${thickness} mm: hay mecanizado parcial (bolsillos/grabado), no corte pasante.`,
+        line: null,
+        severity: 'info',
+        block: 'none',
+      });
+    }
+  }
+
   return {
     schemaVersion: '1',
     kind: 'machining-program',
@@ -247,6 +316,7 @@ export function toQuoteInput(program: CncProgram, options: QuoteOptions = {}): Q
         : null,
       toolCount: program.tools.length,
     },
+    operations,
     time: {
       cuttingSeconds,
       entrySeconds,
@@ -263,7 +333,7 @@ export function toQuoteInput(program: CncProgram, options: QuoteOptions = {}): Q
     quotable: program.quotable,
     timeReliable: reliability !== 'incomplete',
     blockers: program.blockers,
-    warnings: program.warnings,
+    warnings,
     assumptions,
     analysis,
   };
@@ -448,6 +518,7 @@ export function toEpsQuoteInput(doc: EpsDocument, filename: string, options: Quo
       tool: null,
       toolCount: 0,
     },
+    operations: [],
     time: {
       cuttingSeconds: 0,
       entrySeconds: 0,

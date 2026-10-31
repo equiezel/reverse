@@ -134,6 +134,7 @@ export function toQuoteMetrics(program: CncProgram, options: MetricsOptions = {}
       passes: op.passes,
       depthMm: op.depthMm,
       rapidLengthMm: round(perOpTime.get(op.id)?.rapid ?? 0),
+      rapidSeconds: round(((perOpTime.get(op.id)?.rapid ?? 0) / rapidRate) * 60, 4),
       cutSeconds: round(perOpTime.get(op.id)?.seconds ?? 0, 4),
       toolId: op.toolId,
     })),

@@ -199,6 +199,11 @@ describe('Adaptador de presupuesto', () => {
     expect(q.time.reliability).toBe('estimated');
     expect(q.timeReliable).toBe(true);
     expect(q.time.totalSeconds).toBeGreaterThan(0);
+    expect(q.operations).toHaveLength(1);
+    expect(q.operations[0]!.loopCount).toBe(1);
+    expect(q.operations[0]!.holeCount).toBe(0);
+    expect(q.operations[0]!.perimeterMm).toBeCloseTo(300, 6);
+    expect(q.operations[0]!.totalSeconds).toBeGreaterThan(0);
     expect(q.assumptions.length).toBeGreaterThan(0);
   });
 
@@ -211,6 +216,8 @@ describe('Adaptador de presupuesto', () => {
     expect(q.geometry.areaBasis).toBe('tool-center');
     expect(q.geometry.partAreaMm2).toBeCloseTo(5000 - 1.585 * 300, 3);
     expect(q.machining.partVolumeMm3).toBeCloseTo((5000 - 1.585 * 300) * 12, 3);
+    // el rectangulo corta 1 mm en un espesor de 12 mm: es mecanizado parcial
+    expect(q.warnings.some((w) => w.code === 'DEPTH_BELOW_STOCK')).toBe(true);
   });
 
   it('un EPS solo aporta geometria: tiempo no confiable y sin mecanizado', () => {
@@ -220,6 +227,7 @@ describe('Adaptador de presupuesto', () => {
     expect(q.time.reliability).toBe('incomplete');
     expect(q.timeReliable).toBe(false);
     expect(q.machining.passes).toBe(0);
+    expect(q.operations).toEqual([]);
     expect(q.geometry.contourLengthMm).toBeCloseTo(300, 2);
     expect(q.geometry.partAreaMm2).toBeCloseTo(5000, 1);
   });
