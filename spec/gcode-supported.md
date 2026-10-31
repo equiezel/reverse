@@ -7,14 +7,18 @@ conformidad completa con RS-274/NGC ni sustituye el manual del controlador.
 
 - Coordenadas, distancias, radios y feed se convierten a mm y mm/min en el IR.
 - Z=0 representa la cara superior del material; Z positivo queda fuera.
-- Si no aparece G20/G21, se asume mm solo para reconstruir geometria, se emite
-  warning, coverage baja y la cotizacion automatica queda bloqueada.
+- Si no aparece G20/G21, se asume mm solo para reconstruir geometria y se emite
+  `UNITS_ASSUMED` con `block: 'none'`: es un supuesto documentado, no una
+  perdida de semantica. No reduce `coverage`; la UI debe mostrarlo antes de
+  cotizar. En el corpus real las unidades se confirmaron contra el EPS y contra
+  el espesor del material.
 - Posicionamiento absoluto G90 e incremental G91.
 - Los arcos representan centro/radio/barrido, con muestreo para render.
 - `coverage` se basa en bloques que no tuvieron semantica marcada como
-  desconocida. Cualquier bloque desconocido bloquea la cotizacion, incluso si
-  el porcentaje mostrado redondea a 1. `quotable` no equivale a validacion en
-  maquina.
+  desconocida. `quotable` exige `coverage === 1`, sin errores y sin `blockers`
+  de geometria; no equivale a validacion en maquina.
+- Cada warning declara `block`: `geometry` impide cotizar, `time` solo invalida
+  el tiempo, `none` es informativo.
 
 ## Comandos tratados
 
@@ -40,6 +44,8 @@ conformidad completa con RS-274/NGC ni sustituye el manual del controlador.
 - Arco imposible, radio incompatible, archivo vacio o limites excedidos:
   `CncParseError`.
 - G41/G42, G43/G44, G53 y G92 con efecto geometrico desconocido: no cotizar.
+- Falta de `F` en un avance o G95 sin RPM: `timeReliable === false`; la
+  geometria sigue siendo cotizable.
 - G28/G30 con coordenadas de retorno no modeladas: no cotizar ese bloque.
 - G84/G87/G88: ciclo aproximado a un ciclo simple con warning; no se debe
   tratar como equivalente exacto a roscado o ciclo de fabricante.

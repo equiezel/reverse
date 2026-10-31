@@ -30,13 +30,61 @@ construccion depende de la especificacion MS-CFB.
 |---|---|---|
 | Encabezado | archivo `+0` | `%!PS-Adobe-3.0 EPSF-3.0` |
 | Productor y titulo | comentarios EPS | `ArtCAM`; `Contour data from ArtCAM` |
-| BoundingBox | comentario `%%BoundingBox` | coordenadas PostScript; requiere convertir unidades |
-| Escala | operador `2.834646 2.834646 scale` | puntos PostScript por mm |
-| Operadores vectoriales | cuerpo | `moveto`, `lineto`, `curveto`, `closepath`, `stroke` |
+| `%%BoundingBox` | comentario DSC | en **puntos PostScript**; no es mm |
+| Escala | operador `2.834646 2.834646 scale` | mm -> puntos PostScript (72/25.4) |
+| Operadores de dibujo | cuerpo | `moveto`, `lineto`, `curveto`, `stroke`, `fill` |
+| Operadores de estado | cuerpo | `gsave`, `grestore`, `translate`, `rotate`, `concat` |
+| Cierre de subpath | fin de cada subpath | ArtCAM no emite `closepath`: repite el punto inicial |
 
-El analizador Python aproxima curvas Bezier con segmentos y no es un interprete
-PostScript general. No se debe ejecutar PostScript para analizarlo. No hay
-todavia parser EPS en TypeScript ni una geometria de referencia aprobada.
+### Unidades y transformacion
+
+El EPS de ArtCAM ya esta en milimetros: dibuja con `scale 2.834646` para pasar
+de mm a puntos PostScript. El parser aplica la matriz de transformacion (CTM) y
+divide por `72/25.4`, de modo que la geometria resultante queda en mm. Aplicar
+la escala dos veces produce un error de 8x y fue la causa de una conclusion
+anterior equivocada ("EPS de otro diseno").
+
+El `%%BoundingBox` esta en puntos PostScript; para compararlo con el G-code hay
+que dividirlo por `72/25.4`. El bbox de la geometria parseada (`geometryBboxMm`)
+es el que se usa en el IR.
+
+### Relacion con el G-code
+
+`1.eps` y `trayectorias.cnc` son el mismo trabajo:
+
+- 17 subpaths EPS <-> 17 operaciones G-code;
+- perimetro total a una pasada: 7318.54 mm (EPS) contra 7351.52 mm (G-code),
+  +0.45%;
+- bbox EPS 784.033 x 172.507 mm contra 787.174 x 175.618 mm del G-code: la
+  diferencia es ~2r con r = 1.585 mm (herramienta `3.17mm plana`);
+- el G-code recorre el centro de herramienta; el EPS es el contorno de pieza.
+
+Detalle y tablas en [03-validation.md](./03-validation.md).
+
+### Lector TypeScript
+
+`src/formats/eps.ts` es un subconjunto seguro y acotado: tokeniza, aplica solo
+operadores de geometria/transformacion y **no ejecuta PostScript**. Aproxima
+Bezier cubicas con segmentos de <= 0.5 mm de cuerda (8 a 128 tramos). Limites:
+8 MB de texto, 2 millones de tokens, 2 millones de puntos; al excederlos lanza
+`EpsError`. Los operadores desconocidos se listan en `unsupported` y no alteran
+la geometria.
+
+## Que aporta cada formato al presupuesto
+
+| Magnitud | G-code `.cnc` | EPS | `.art` |
+|---|---|---|---|
+| Perimetro / area de pieza | si (compensando r) | si, directo | no (geometria sin decodificar) |
+| Longitud real recorrida | si | no | no |
+| Pasadas y profundidad | si | no | profundidad declarada, sin trayectoria |
+| Tiempo de maquina | estimado con F y rapido supuesto | no | no |
+| Herramienta (diametro) | no | no | si (`3.17mm plana`) |
+| Espesor de material | no | no | si (12 mm) |
+| RPM | si (M3 S...) | no | si (18000) |
+
+Regla de integracion: usar el G-code para mecanizado y tiempo; el EPS para
+verificar el contorno y el area; el `.art` para herramienta y espesor. Nunca
+inventar el dato que falta: queda `null` y se declara en `assumptions`.
 
 ## G-code
 
@@ -55,7 +103,8 @@ que bloquean cotizacion se mantienen en
 4. La lista de toolpaths tiene header u16/u16 y strings con prefijo de longitud.
 5. La descripcion de herramienta se detecta buscando texto UTF-16LE.
 6. La geometria compacta de `Data2` y `RampData` sigue sin mapear.
-7. El EPS declara escala 2.834646 entre mm y PostScript.
-8. Sus Bezier se aproximan en el script de investigacion, no en el runtime.
-9. No se declara un esquema binario de campos que no se ha probado.
-10. Siguiente paso: comparar dos `.art` exportados variando una sola opcion.
+7. El EPS declara escala 2.834646 entre mm y puntos PostScript.
+8. Sus subpaths se cierran repitiendo el punto inicial, no con `closepath`.
+9. El lector EPS es TypeScript puro y no ejecuta PostScript.
+10. EPS y G-code son el mismo diseno; el `.art` aporta herramienta y espesor.
+11. Siguiente paso: comparar dos `.art` exportados variando una sola opcion.

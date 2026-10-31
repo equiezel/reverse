@@ -24,11 +24,12 @@ mantienen fuera de versionado mediante `.gitignore`.
   tamano y 2806 movimientos interpretados que `trayectorias.cnc`, pero hash
   distinto y diferente orden de operaciones.
 - El EPS declara `%%Creator: ArtCAM`, `%%Title: Contour data from ArtCAM` y un
-  escalado PostScript de `2.834646` unidades por milimetro.
+  escalado PostScript de `2.834646` unidades por milimetro (mm -> puntos).
 - El `.art` contiene version ArtCAM 9.021, material `Material`, espesor 12 mm y
   dos toolpaths con descripcion de herramienta `3.17mm plana`.
-- No se ha confirmado que el EPS y los dos G-code correspondan al mismo diseño.
-  La comparacion exploratoria de sus dimensiones no coincide; ver
+- El EPS y los dos G-code corresponden al mismo diseno: 17 subpaths <-> 17
+  operaciones, perimetro +0.45%, bbox +2r. El G-code recorre el centro de
+  herramienta; el EPS es el contorno de pieza. Ver
   [03-validation.md](./03-validation.md).
 
 ## Campos de Fase 0 que faltan
@@ -36,9 +37,9 @@ mantienen fuera de versionado mediante `.gitignore`.
 No estan confirmados: version exacta de software que exporto cada `.cnc`, marca
 y modelo de maquina, controlador/postprocesador, significado de cada archivo,
 si hay versiones de maquina distintas y condiciones de confidencialidad. El
-usuario prioriza tanto cotizar mecanizado como reconstruir la pieza. Puede
-aportar DXF/SVG de control del mismo job; aun falta recibirlo con unidades,
-origen y compensacion documentados.
+usuario confirmo que el objetivo es **cotizar mecanizado con exactitud**, no
+reconstruir la pieza. Puede aportar DXF/SVG de control del mismo job; aun falta
+recibirlo con unidades, origen y compensacion documentados.
 
 ## Resumen de fase
 
@@ -49,6 +50,6 @@ origen y compensacion documentados.
 5. El EPS es PostScript vectorial generado por ArtCAM.
 6. El `.art` declara version 9.021 y stock de 12 mm.
 7. El `.art` contiene dos toolpaths con herramienta de 3.17 mm.
-8. La relacion geometrica EPS-G-code no quedo validada.
+8. EPS y G-code son el mismo diseno y la unidad mm queda confirmada.
 9. ArtCAM 9 y Mach2 son recuerdos del usuario, no confirmaciones del archivo.
 10. Siguiente paso: agregar un DXF de control y confirmar procedencia.
