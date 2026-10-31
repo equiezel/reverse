@@ -189,9 +189,15 @@ export function parseGcode(text: string, options: ParseOptions = {}): CncProgram
   }
 
   const warnings: CncWarning[] = [];
-  const warn = (code: string, message: string, line: number | null, severity: CncWarning['severity'] = 'warning'): void => {
+  const warn = (
+    code: string,
+    message: string,
+    line: number | null,
+    severity: CncWarning['severity'] = 'warning',
+    block?: CncWarning['block'],
+  ): void => {
     if (warnings.length >= DEFAULTS.maxWarnings) return;
-    warnings.push({ code, message, line, severity });
+    warnings.push({ code, message, line, severity, block: block ?? blockFor(code) });
   };
 
   const state: State = {
@@ -775,8 +781,8 @@ export function parseGcode(text: string, options: ParseOptions = {}): CncProgram
     if (axes.z !== undefined) target.z = state.distance === 'absolute' ? axes.z : state.position.z + axes.z;
 
     if (!state.unitsDeclared) {
+      // Supuesto documentado, no perdida de semantica: no baja coverage.
       warn('UNITS_ASSUMED', `Programa sin G20/G21: se asume ${state.units}`, lineNo);
-      unknownBlocks += 1;
       state.unitsDeclared = true;
     }
     if (state.cutterComp !== 40) {
@@ -808,6 +814,8 @@ export function parseGcode(text: string, options: ParseOptions = {}): CncProgram
 
   const coverage = totalBlocks === 0 ? 0 : Math.max(0, Math.min(1, 1 - unknownBlocks / totalBlocks));
   const hasErrors = warnings.some((w) => w.severity === 'error');
+  const blockers = [...new Set(warnings.filter((w) => w.block === 'geometry').map((w) => w.code))];
+  const timeReliable = !warnings.some((w) => w.block === 'time');
   const program: CncProgram = {
     source: {
       filename,
@@ -824,9 +832,26 @@ export function parseGcode(text: string, options: ParseOptions = {}): CncProgram
     stock: null,
     warnings: warnings.sort((a, b) => (a.line ?? 0) - (b.line ?? 0)),
     coverage: round(coverage, 4),
-    quotable: unknownBlocks === 0 && !hasErrors,
+    blockers,
+    quotable: unknownBlocks === 0 && !hasErrors && blockers.length === 0,
+    timeReliable,
   };
   return program;
+}
+
+/** Impacto por defecto de cada codigo de advertencia. */
+export function blockFor(code: string): CncWarning['block'] {
+  switch (code) {
+    case 'UNITS_ASSUMED':
+    case 'AFTER_PROGRAM_END':
+    case 'CYCLE_PECK_WITHOUT_Q':
+      return 'none';
+    case 'FEED_MISSING':
+    case 'FEED_UNITS_PER_REV_NO_RPM':
+      return 'time';
+    default:
+      return 'geometry';
+  }
 }
 
 /** Agrupa movimientos en operaciones por retraccion/cambio de herramienta. */

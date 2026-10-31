@@ -149,6 +149,7 @@ export function probeArtcam(bytes: Uint8Array, filename = 'proyecto.art'): Artca
         message: `No se pudo leer ${path}: ${(err as Error).message}`,
         line: null,
         severity: 'warning',
+        block: 'none',
       });
       return null;
     }
@@ -200,6 +201,7 @@ export function probeArtcam(bytes: Uint8Array, filename = 'proyecto.art'): Artca
       message: 'No se encontro lista de toolpaths en el contenedor',
       line: null,
       severity: 'warning',
+      block: 'none',
     });
   }
 
@@ -209,6 +211,7 @@ export function probeArtcam(bytes: Uint8Array, filename = 'proyecto.art'): Artca
       'La geometria de toolpath (streams Data2/RampData) no esta decodificada: el .art solo aporta metadatos. Exportar G-code/DXF para cotizar.',
     line: null,
     severity: 'warning',
+    block: 'geometry',
   });
 
   return {

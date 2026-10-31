@@ -82,11 +82,20 @@ export interface CncOperation {
   inferred: boolean;
 }
 
+/**
+ * Que componente invalida una advertencia:
+ *  - `geometry`: la trayectoria/longitud/area no es confiable -> no cotizar.
+ *  - `time`: la geometria sirve pero el tiempo no es confiable.
+ *  - `none`: supuesto documentado; se muestra pero no bloquea.
+ */
+export type WarningBlock = 'geometry' | 'time' | 'none';
+
 export interface CncWarning {
   code: string;
   message: string;
   line: number | null;
   severity: 'info' | 'warning' | 'error';
+  block: WarningBlock;
 }
 
 export interface Stock {
@@ -122,8 +131,12 @@ export interface CncProgram {
   warnings: CncWarning[];
   /** 0..1: fraccion de bloques interpretados sin perdida de semantica. */
   coverage: number;
-  /** true si se puede cotizar sin revisar (coverage === 1 y sin unknowns). */
+  /** Codigos de advertencia con `block === 'geometry'`. Vacio = geometria confiable. */
+  blockers: string[];
+  /** true si la geometria es confiable y se puede cotizar (coverage === 1 y sin blockers). */
   quotable: boolean;
+  /** false si algun aviso con `block === 'time'` impide estimar el tiempo. */
+  timeReliable: boolean;
 }
 
 export type MoveKind = 'rapid' | 'feed' | 'arc' | 'drill' | 'dwell';
@@ -160,6 +173,8 @@ export interface CncMove {
   pierces: boolean;
   /** true si es un taladrado de ciclo (un agujero). */
   drill: boolean;
+  /** Muestreo del arco en XY para render y analisis (solo arcos). */
+  samples?: Vec3[];
 }
 
 export interface QuoteMetrics {
@@ -194,9 +209,14 @@ export interface QuoteMetrics {
     pierceCount: number;
     passes: number;
     depthMm: number | null;
+    rapidLengthMm: number;
+    cutSeconds: number;
+    toolId: string | null;
   }>;
   warnings: CncWarning[];
+  blockers: string[];
   coverage: number;
   quotable: boolean;
+  timeReliable: boolean;
   assumptions: string[];
 }

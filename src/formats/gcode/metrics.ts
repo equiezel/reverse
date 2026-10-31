@@ -68,6 +68,15 @@ export function toQuoteMetrics(program: CncProgram, options: MetricsOptions = {}
 
   const toolChanges = program.toolChangeCount;
 
+  const perOpTime = new Map<string, { seconds: number; rapid: number }>();
+  for (const move of program.moves) {
+    if (!move.operationId) continue;
+    const acc = perOpTime.get(move.operationId) ?? { seconds: 0, rapid: 0 };
+    if (move.kind === 'rapid') acc.rapid += move.lengthMm;
+    else acc.seconds += move.seconds ?? 0;
+    perOpTime.set(move.operationId, acc);
+  }
+
   const bbox = hasCutPoint
     ? { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
     : null;
@@ -78,6 +87,11 @@ export function toQuoteMetrics(program: CncProgram, options: MetricsOptions = {}
     `Rapido G0 estimado a ${rapidRate} mm/min (no lo declara el programa).`,
     `CutLength incluye entradas y rampas; engagedLength es solo lo que esta bajo z=0.`,
   ];
+  if (program.warnings.some((w) => w.code === 'UNITS_ASSUMED')) {
+    assumptions.push(
+      `El programa no declara G20/G21: se asumieron ${program.units} (verificar antes de cotizar).`,
+    );
+  }
   if (program.tools.some((t) => t.diameterMm === null)) {
     assumptions.push('Diametro de herramienta desconocido: el programa G-code no lo declara.');
   }
@@ -89,6 +103,7 @@ export function toQuoteMetrics(program: CncProgram, options: MetricsOptions = {}
   const estimatedRapidSeconds = rapidSeconds;
   const estimatedSeconds =
     cutSeconds + rapidSeconds + dwellSeconds + toolChanges * toolChangeSeconds;
+  const blockers = program.blockers ?? [];
 
   return {
     units: 'mm',
@@ -104,7 +119,7 @@ export function toQuoteMetrics(program: CncProgram, options: MetricsOptions = {}
     estimatedCutSeconds,
     estimatedRapidSeconds,
     estimatedSeconds,
-    timeComplete,
+    timeComplete: timeComplete && program.timeReliable !== false,
     bbox,
     minZ: Number.isFinite(minZ) ? minZ : null,
     maxZ: Number.isFinite(maxZ) ? maxZ : null,
@@ -118,10 +133,20 @@ export function toQuoteMetrics(program: CncProgram, options: MetricsOptions = {}
       pierceCount: op.pierceCount,
       passes: op.passes,
       depthMm: op.depthMm,
+      rapidLengthMm: round(perOpTime.get(op.id)?.rapid ?? 0),
+      cutSeconds: round(perOpTime.get(op.id)?.seconds ?? 0, 4),
+      toolId: op.toolId,
     })),
     warnings: program.warnings,
+    blockers,
     coverage: program.coverage,
     quotable: program.quotable,
+    timeReliable: timeComplete && program.timeReliable !== false,
     assumptions,
   };
+}
+
+function round(v: number, decimals = 6): number {
+  const f = 10 ** decimals;
+  return Math.round(v * f) / f;
 }
